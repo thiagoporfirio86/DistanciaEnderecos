@@ -1,0 +1,76 @@
+import pandas as pd
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic
+import time
+
+# Inicializar o geolocalizador
+geolocator = Nominatim(user_agent="endereco_sorter")
+
+def get_coordinates(address):
+    """Obtém coordenadas (latitude, longitude) de um endereço."""
+    try:
+        location = geolocator.geocode(address)
+        if location:
+            return (location.latitude, location.longitude)
+        else:
+            print(f"Endereço não encontrado: {address}")
+            return None
+    except Exception as e:
+        print(f"Erro ao geolocalizar {address}: {e}")
+        return None
+
+def calculate_distance(coord1, coord2):
+    """Calcula a distância geodésica entre duas coordenadas."""
+    if coord1 and coord2:
+        return geodesic(coord1, coord2).kilometers
+    return float('inf')  # Retorna infinito se uma coordenada for inválida
+
+def main():
+    # Carregar a planilha
+    try:
+        df = pd.read_excel("enderecos.xlsx")  # Substitua pelo nome do arquivo
+        if "Nome" not in df.columns or "Endereço" not in df.columns:
+            print("A planilha deve conter as colunas 'Nome' e 'Endereço'.")
+            return
+    except Exception as e:
+        print(f"Erro ao ler a planilha: {e}")
+        return
+
+    # Obter coordenadas para cada endereço
+    print("Obtendo coordenadas dos endereços...")
+    df['Coordenadas'] = df['Endereço'].apply(lambda x: get_coordinates(x))
+    
+    # Remover linhas com coordenadas inválidas
+    df = df.dropna(subset=['Coordenadas'])
+    if df.empty:
+        print("Nenhum endereço válido encontrado.")
+        return
+
+    # === NOVA PARTE ADICIONADA: SOLICITAR ENDEREÇO DE REFERÊNCIA ===
+    print("\nPor favor, insira o endereço de referência (ex.: Rua Augusta, 123, São Paulo, SP):")
+    endereco_referencia = input().strip()
+    print(f"Endereço de referência fornecido: {endereco_referencia}")
+    
+    # Obter coordenadas do endereço de referência
+    referencia = get_coordinates(endereco_referencia)
+    if not referencia:
+        print("Não foi possível obter as coordenadas do endereço de referência. Encerrando.")
+        return
+    # === FIM DA NOVA PARTE ===
+
+    # Calcular a distância de cada endereço até a referência
+    df['Distancia_km'] = df['Coordenadas'].apply(lambda x: calculate_distance(referencia, x))
+
+    # Ordenar pelo campo Distancia_km
+    df_sorted = df.sort_values(by='Distancia_km').reset_index(drop=True)
+
+    # Exibir o resultado
+    print("\nEndereços ordenados por proximidade:")
+    print(df_sorted[['Nome', 'Endereço', 'Distancia_km']])
+
+    # Salvar o resultado em uma nova planilha
+    df_sorted.to_excel("enderecos_ordenados.xlsx", index=False)
+    print("\nResultado salvo em 'enderecos_ordenados.xlsx'.")
+
+if __name__ == "__main__":
+    main()
